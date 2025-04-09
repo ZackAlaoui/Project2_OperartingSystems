@@ -1,0 +1,22 @@
+threads100
+insertRichard Garriot40000
+insertSid Meier50000
+insertShigeru Miyamoto51000
+deleteSid Meier0
+insertHideo Kojima45000
+insertGabe Newell49000
+insertRoberta Williams45900
+deleteRichard Garriot0
+insertCarol Shaw41000
+searchSid Meier0
+threads,10,0,
+insert,Richard Garriot,40000,
+insert,Sid Meier,50000,
+insert,Shigeru Miyamoto,51000,
+delete,Sid Meier,0,
+insert,Hideo Kojima,45000,
+insert,Gabe Newell,49000,
+insert,Roberta Williams,45900,
+delete,Richard Garriot,0,
+insert,Carol Shaw,41000,
+search,Sid Meier,0,
