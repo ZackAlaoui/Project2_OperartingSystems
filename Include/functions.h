@@ -28,7 +28,7 @@ void * search(void *key);
 uint32_t jenkins_one_at_a_time_hash(const uint8_t *key, size_t length);
 
 //Print function
-void print();
+void print(const char* unused1, int unused2);
 
 //Thread function
 void threads(int threadCount, char data[MAX_ROWS][MAX_WORDS_PER_ROW][MAX_LETTERS_PER_WORD]);

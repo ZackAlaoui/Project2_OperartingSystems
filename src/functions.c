@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h> // corrected
-#include "../include/functions.h"
+#include "../Include/functions.h"
 
 #define TABLE_SIZE 100 // Adjust as needed
 
@@ -52,63 +52,73 @@ uint32_t jenkins_one_at_a_time_hash(const uint8_t *key, size_t length) {
 }
 
 void threads(int threadCount, char data[MAX_ROWS][MAX_WORDS_PER_ROW][MAX_LETTERS_PER_WORD]) {
-    pthread_t *threadArray = malloc(threadCount * sizeof(pthread_t));
-    hashRecord **record = malloc(threadCount * sizeof(hashRecord *));
+    pthread_t *insertThreads = malloc(threadCount * sizeof(pthread_t));
+    pthread_t *otherThreads = malloc(threadCount * sizeof(pthread_t));
+    hashRecord **insertRecords = malloc(threadCount * sizeof(hashRecord *));
+    hashRecord **otherRecords = malloc(threadCount * sizeof(hashRecord *));
+
+    int insertCount = 0, otherCount = 0;
 
     outputFile = fopen("output.txt", "a");
+    fprintf(stdout, "Running %d threads\n", threadCount);
+    fprintf(outputFile, "Running %d threads\n", threadCount);
 
-    if (!threadArray || !record) {
-        perror("Memory allocation failed");
-        free(threadArray);
-        free(record);
-        return;
-    }
-
-    for (int i = 0; i < threadCount + 1; i++) {
-        //printf("%s\n", data[i+1][0]);
-        record[i] = malloc(sizeof(hashRecord));
-        if (!record[i]) {
-            perror("Failed to allocate memory for record");
-            continue;
-        }
+    // Classify commands
+    for (int i = 1; i <= threadCount; i++) {
+        hashRecord *rec = malloc(sizeof(hashRecord));
+        if (!rec) continue;
 
         void *(*routine)(void *) = NULL;
-
-        if (strcmp(data[i+1][0], "insert") == 0) {
-            strcpy(record[i]->name, data[i+1][1]);
-            record[i]->salary = atoi(data[i+1][2]);
+        if (strcmp(data[i][0], "insert") == 0) {
+            strcpy(rec->name, data[i][1]);
+            rec->salary = atoi(data[i][2]);
             routine = insert;
-        } else if (strcmp(data[i+1][0], "search") == 0) {
-            strcpy(record[i]->name, data[i+1][1]);
-            routine = search;
-        } else if (strcmp(data[i+1][0], "delete") == 0) {
-            strcpy(record[i]->name, data[i+1][1]);
-            routine = delete;
+            insertRecords[insertCount] = rec;
+            pthread_create(&insertThreads[insertCount], NULL, routine, rec);
+            insertCount++;
         } else {
-            continue;
+            strcpy(rec->name, data[i][1]);
+            if (strcmp(data[i][0], "delete") == 0) {
+                routine = delete;
+            } else if (strcmp(data[i][0], "search") == 0) {
+                routine = search;
+            }
+            otherRecords[otherCount] = rec;
+            otherThreads[otherCount] = 0;
+            pthread_create(&otherThreads[otherCount], NULL, routine, rec);
+            otherCount++;
         }
+    }
 
-        if (pthread_create(&threadArray[i], NULL, routine, record[i]) != 0) {
-            perror("Failed to create thread");
-            free(record[i]);
-        }
+    // Join insert threads
+    for (int i = 0; i < insertCount; i++) {
+        pthread_join(insertThreads[i], NULL);
+        free(insertRecords[i]);
     }
 
     long long timeStamp = current_timeStamp();
-    printf("%lld: WAITING ON INSERTS\n", timeStamp);
+    fprintf(stdout, "%lld: WAITING ON INSERTS\n", timeStamp);
+    fprintf(outputFile, "%lld: WAITING ON INSERTS\n", timeStamp);
+    fflush(outputFile);
 
-    for (int i = 0; i < threadCount + 1; i++) {
-        pthread_join(threadArray[i], NULL);
-        free(record[i]);
+    // Join delete and search threads
+    for (int i = 0; i < otherCount; i++) {
+        pthread_join(otherThreads[i], NULL);
+        free(otherRecords[i]);
     }
 
     fprintf(stdout, "Finished all threads.\n");
+    fprintf(outputFile, "Finished all threads.\n");
+    fflush(outputFile);
 
     print(0 ,0);
 
-    free(threadArray);
-    free(record);
+    free(insertThreads);
+    free(otherThreads);
+    free(insertRecords);
+    free(otherRecords);
 }
+
 
 void *insert(void *data) {
     //printf("Inside insert\n");
@@ -119,7 +129,12 @@ void *insert(void *data) {
 
     long long timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: INSERT,%u,%s,%u\n", timeStamp, hash, record->name, record->salary);
+    fprintf(outputFile, "%lld: INSERT,%u,%s,%u\n", timeStamp, hash, record->name, record->salary);
+    fflush(outputFile);
+
     fprintf(stdout, "%lld: WRITE LOCK ACQUIRED\n", timeStamp);
+    fprintf(outputFile, "%lld: WRITE LOCK ACQUIRED\n", timeStamp);
+    fflush(outputFile);
     lockCounter++;
 
     pthread_rwlock_wrlock(&rwlock);
@@ -134,6 +149,8 @@ void *insert(void *data) {
 
     timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+    fprintf(outputFile, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+    fflush(outputFile);
     releaseCounter++;
 
     pthread_rwlock_unlock(&rwlock);
@@ -149,9 +166,12 @@ void *delete(void *data) {
 
     long long timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: DELETE AWAKENED\n", timeStamp);
-
+    fprintf(outputFile, "%lld: DELETE AWAKENED\n", timeStamp);
+    
     timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: WRITE LOCK ACQUIRED\n", timeStamp);
+    fprintf(outputFile, "%lld: WRITE LOCK ACQUIRED\n", timeStamp);
+    fflush(outputFile);
     lockCounter++;
 
     pthread_rwlock_wrlock(&rwlock);
@@ -170,9 +190,12 @@ void *delete(void *data) {
 
             timeStamp = current_timeStamp();
             fprintf(stdout, "%lld: DELETE,%s\n", timeStamp, record->name);
+            fprintf(outputFile, "%lld: DELETE,%s\n", timeStamp, record->name);
 
             timeStamp = current_timeStamp();
             fprintf(stdout, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+            fprintf(outputFile, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+            fflush(outputFile);
             releaseCounter++;
 
             pthread_rwlock_unlock(&rwlock);
@@ -184,11 +207,15 @@ void *delete(void *data) {
 
     timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+    fprintf(outputFile, "%lld: WRITE LOCK RELEASED\n", timeStamp);
+    fflush(outputFile);
     releaseCounter++;
 
     pthread_rwlock_unlock(&rwlock);
     timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: NOT FOUND,%s\n", timeStamp, record->name);
+    fprintf(outputFile, "%lld: NOT FOUND,%s\n", timeStamp, record->name);
+    fflush(outputFile);
     return NULL;
 }
 
@@ -197,10 +224,14 @@ void *search(void *data) {
     hashRecord *record = (hashRecord *)data;
     uint32_t index = jenkins_one_at_a_time_hash((const uint8_t *)record->name, strlen(record->name)) % TABLE_SIZE;
 
+    pthread_rwlock_rdlock(&rwlock);
+    lockCounter++;
+
     long long timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: READ LOCK ACQUIRED\n", timeStamp);
-    pthread_rwlock_rdlock(&rwlock); //Acquire the reader lock
-    lockCounter++;
+    fprintf(outputFile, "%lld: READ LOCK ACQUIRED\n", timeStamp);
+    fflush(outputFile);
+
 
     hashRecord *current = hashTable[index];
 
@@ -208,7 +239,10 @@ void *search(void *data) {
         if (strcmp(current->name, record->name) == 0) {
             timeStamp = current_timeStamp();
             fprintf(stdout, "%lld: SEARCH: FOUND %s, Salary: %u\n", timeStamp, current->name, current->salary);
+            fprintf(outputFile, "%lld: SEARCH: FOUND %s, Salary: %u\n", timeStamp, current->name, current->salary);
             fprintf(stdout, "%lld: READ LOCK RELEASED\n", timeStamp);
+            fprintf(outputFile, "%lld: READ LOCK RELEASED\n", timeStamp);
+            fflush(outputFile);
             releaseCounter++;
             pthread_rwlock_unlock(&rwlock);
             return NULL;
@@ -218,7 +252,10 @@ void *search(void *data) {
 
     timeStamp = current_timeStamp();
     fprintf(stdout, "%lld: SEARCH: NOT FOUND %s\n", timeStamp, record->name);
+    fprintf(outputFile, "%lld: SEARCH: NOT FOUND NOT FOUND\n", timeStamp);
     fprintf(stdout, "%lld: READ LOCK RELEASED\n", timeStamp);
+    fprintf(outputFile, "%lld: READ LOCK RELEASED\n", timeStamp);
+    fflush(outputFile);
     releaseCounter++;
 
     pthread_rwlock_unlock(&rwlock);
@@ -232,25 +269,22 @@ void print(const char* unused1, int unused2) {
     (void)unused2;
     
     FILE* output_file = fopen("output.txt", "a");
+    hashRecord** records = NULL;
+    int record_count = 0;
 
-    fprintf(output_file, "Number of lock acquisitions: %d\n", lockCounter);
-    fprintf(output_file, "Number of lock releases: %d\n", releaseCounter);
-
-
-    if (output_file == NULL) {
+    if (!output_file) {
         fprintf(stderr, "Error opening output file for printing hash table\n");
         return;
     }
-    
-    // Create an array to store all records for sorting
-    hashRecord** records = NULL;
-    int record_count = 0;
-    
-    // Acquire read lock to read the hash table safely
-    timeStamp = current_timeStamp();
-    //fprintf(output_file, "%lld: READ LOCK ACQUIRED\n", timeStamp);
 
+    // Acquire read lock before printing anything
     pthread_rwlock_rdlock(&rwlock);
+    lockCounter++;
+
+
+    timeStamp = current_timeStamp();
+    fprintf(output_file, "%lld: READ LOCK ACQUIRED\n", timeStamp);
+    fflush(outputFile);
     
     // First pass: count records to allocate array
     for (int i = 0; i < TABLE_SIZE; i++) {
@@ -310,8 +344,12 @@ void print(const char* unused1, int unused2) {
     
     // Release read lock
     pthread_rwlock_unlock(&rwlock);
+    releaseCounter++;
+
     timeStamp = current_timeStamp();
-    //fprintf(output_file, "%lld: READ LOCK RELEASED\n", timeStamp);
-    
+    fprintf(output_file, "%lld: READ LOCK RELEASED\n", timeStamp);
+    fprintf(output_file, "Number of lock acquisitions: %d\n", lockCounter);
+    fprintf(output_file, "Number of lock releases: %d\n", releaseCounter);
+    fflush(outputFile);
     fclose(output_file);
 }
