@@ -182,6 +182,9 @@ void *delete(void *data)
     pthread_mutex_lock(&mutex);
     while (insertCompleted[index] == 0)
     {
+        timeStamp = current_timeStamp();
+        fprintf(outputFile, "%lld: WAITING ON INSERTS\n", timeStamp);
+        fflush(outputFile);
         pthread_cond_wait(&cond, &mutex);
     }
     pthread_mutex_unlock(&mutex);
